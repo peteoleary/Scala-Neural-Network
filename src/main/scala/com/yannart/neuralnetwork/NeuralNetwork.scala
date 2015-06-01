@@ -51,16 +51,6 @@ class Neuron (val num: Int, val weights: Array[Double]){
         // calculate the activation (output) of this neuron by summing the product of its inputs and weights
         val cumul = inputs.zip(weights).foldLeft[Double](0.0) {(cumul, weights_and_input) => cumul + weights_and_input._1 * weights_and_input._2}
 
-        /*
-        // Old code
-        var cumul : Double = 0d
-		for(i <- 0 until inputs.size){
-			cumul += inputs(i) * weights(i)
-		}
-
-        assert(cumul_func == cumul)
-        */
-
         // apply the activation function
         eval(cumul)
     }
@@ -139,18 +129,39 @@ class Layer(val num: Int, val inputNum: Int, val neurons : Array[Neuron]) {
                 errors(neuronIndex) = outputError(neuronOutput, expectedOutputs.get(neuronIndex))
             } else { //Hidden layers
 
-                /*
-                var tmp : Double = 0
-                for(nextNeuronIndex <- 0 until nextLayer.get.neurons.size)
-                    tmp += nextLayer.get.errors(nextNeuronIndex) * nextLayer.get.neurons(nextNeuronIndex).weights(neuronIndex)
-
-                */
-
                 errors(neuronIndex) = neuronOutput * (1 - neuronOutput) * nextLayer.get.errors.zip(nextLayer.get.neurons).foldLeft(0.0) {(error, layer) => error + layer._1 * layer._2.weights(neuronIndex)}
             }
             //Calculate the cumulated error of the layer
             //layer.cumulatedError =
             //	neuron.weights.reduceLeft( _ + errors(neuronIndex) * _)
+        }
+    }
+
+    def learn(inputs: Array[Double]) = {
+
+        val learnLevel : Double = 0.3
+        val alfa : Double =  0.9
+
+        for(neuronIndex <- 0 until neurons.size){
+
+            //current neuron and error
+            val neuron = neurons(neuronIndex)
+            val neuronError = errors(neuronIndex)
+
+            //For every input
+            for(inputIndex <- 0 until inputs.size){
+
+                neuron.pastErrors(inputIndex) =
+                    learnLevel * neuronError * inputs(inputIndex) +
+                        alfa * neuron.pastErrors(inputIndex)
+
+                neuron.weights(inputIndex) = neuron.pastErrors(inputIndex) + neuron.weights(inputIndex)
+            }
+
+            //updates for the biais
+            neuron.pastErrors(inputs.size) =
+                -learnLevel * neuronError + alfa * neuron.pastErrors(inputs.size)
+            neuron.weights(inputs.size) = neuron.pastErrors(inputs.size) + neuron.weights(inputs.size)
         }
     }
 }
@@ -225,72 +236,17 @@ class Perceptron (val layers : Array[Layer]){
 
     def learn (inputs: Array[Double], outputs: Array[Double]) : Double = {
 
-        val learnLevel : Double = 0.3
-        val alfa : Double =  0.9
-
         //For all the layers but the first
         for(layerIndex <- layers.size - 1 to(1, -1)) {
 
             //current layer
-            val layer = layers(layerIndex)
-            //previous layer
-            val previousLayer = layers(layerIndex - 1)
-
-            //For every neuron in the current layer
-            for(neuronIndex <- 0 until layer.neurons.size) {
-
-                //current neuron and error
-                val neuron = layer.neurons(neuronIndex)
-                val neuronError = layer.errors(neuronIndex)
-
-                //For every neuron in the previous layer
-                for(previusNeuronIndex <- 0 until previousLayer.neurons.size){
-
-                    neuron.pastErrors(previusNeuronIndex) =
-                        learnLevel * neuronError * previousLayer.outputs(previusNeuronIndex) +
-                            alfa * neuron.pastErrors(previusNeuronIndex)
-
-                    neuron.weights(previusNeuronIndex) = neuron.pastErrors(previusNeuronIndex) + neuron.weights(previusNeuronIndex)
-                }
-
-                //updates for the biais
-                neuron.pastErrors(previousLayer.neurons.size) =
-                    -learnLevel * neuronError + alfa * neuron.pastErrors(previousLayer.neurons.size)
-                neuron.weights(previousLayer.neurons.size) = neuron.pastErrors(previousLayer.neurons.size) + neuron.weights(previousLayer.neurons.size)
-            }
+            layers(layerIndex).learn(layers(layerIndex - 1).outputs)
         }
 
         //For the first layer
-        val layer = layers.head
-        for(neuronIndex <- 0 until layer.neurons.size){
+        layers.head.learn(inputs)
 
-            //current neuron and error
-            val neuron = layer.neurons(neuronIndex)
-            val neuronError = layer.errors(neuronIndex)
-
-            //For every input
-            for(inputIndex <- 0 until inputs.size){
-
-                neuron.pastErrors(inputIndex) =
-                    learnLevel * neuronError * inputs(inputIndex) +
-                        alfa * neuron.pastErrors(inputIndex)
-
-                neuron.weights(inputIndex) = neuron.pastErrors(inputIndex) + neuron.weights(inputIndex)
-            }
-
-            //updates for the biais
-            neuron.pastErrors(inputs.size) =
-                -learnLevel * neuronError + alfa * neuron.pastErrors(inputs.size)
-            neuron.weights(inputs.size) = neuron.pastErrors(inputs.size) + neuron.weights(inputs.size)
-        }
-
-        //Calculates the cuadratic error between outputs and expected values
-        //TODO: Use a functional style
-        var cumul : Double = 0
-        for (i <- 0 until outputs.size) {
-            cumul += pow(outputs(i) - layers.last.outputs(i), 2)
-        }
-        sqrt(cumul)
+        sqrt(outputs.zip(layers.last.outputs).foldLeft(0.0)((cum, vals) => cum + pow(vals._1 - vals._2, 2)))
     }
 
     def calculateErrors (inputs: Array[Double], outputs: Array[Double]) = {
@@ -337,7 +293,7 @@ class Perceptron (val layers : Array[Layer]){
     }
 }
 
-object NeuralNetworkApp extends Application {
+object NeuralNetworkApp extends App {
 
 
     def generateXOR = {
